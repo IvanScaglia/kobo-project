@@ -1,86 +1,62 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 
-# 1. Configuración de la página (esto siempre arriba de todo)
-st.set_page_config(
-    page_title="Tablero de Control KoBo - Iván Scaglia",
-    page_icon="📊",
-    layout="wide"
-)
+st.set_page_config(page_title="Tablero KoBo Pro", layout="wide")
 
-# Estilo personalizado para que se vea más pro
+# Estética Profesional
 st.markdown("""
     <style>
-    .main {
-        background-color: #f5f7f9;
-    }
+    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; border: 1px solid #e1e4e8; }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. Función para cargar los datos con "escudo" contra errores
 @st.cache_data
 def cargar_datos():
-    # El parámetro 'on_bad_lines' hace que si la fila 16 está rota, la salte y siga
-    # El parámetro 'sep=None' detecta automáticamente si es , o ;
-    df = pd.read_csv(
-        "datos_kobo_reducido_70.csv", 
-        sep=None, 
-        engine='python', 
-        on_bad_lines='skip',
-        encoding='utf-8'
-    )
-    return df
-
-# 3. Títulos y presentación
-st.title("📊 Monitor de Relevamiento Observacional")
-st.markdown("---")
+    return pd.read_csv("datos_kobo_reducido_70.csv", sep=None, engine='python', on_bad_lines='skip')
 
 try:
     df = cargar_datos()
-
-    # 4. Indicadores clave (KPIs)
-    col1, col2, col3 = st.columns(3)
     
-    with col1:
-        st.metric("Total de Registros", f"{len(df):,}")
+    st.title("📊 Análisis de Relevamiento Observacional")
+    st.info("Visualización profesional de datos recolectados vía KoBoCollect.")
+
+    # 1. MÉTRICAS CLAVE
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Total Relevamientos", len(df))
+    col2.metric("Variables", len(df.columns))
     
-    with col2:
-        # Intentamos contar comunas si la columna existe
-        if 'comuna' in df.columns:
-            st.metric("Comunas Cubiertas", df['comuna'].nunique())
-        else:
-            st.metric("Columnas Detectadas", len(df.columns))
-            
-    with col3:
-        st.success("Base de datos conectada")
-
-    st.markdown("---")
-
-    # 5. Gráficos interactivos
-    st.subheader("📈 Análisis por Categoría")
+    # 2. FILTRADO DE COLUMNAS (Para que no aparezcan los IDs feos)
+    # Solo mostramos columnas que tengan nombres descriptivos
+    columnas_analisis = [c for c in df.columns if not any(x in c.lower() for x in ['id', 'uuid', 'index', 'version', 'submission', 'notes'])]
     
-    # Filtramos columnas que no sirven para graficar (como IDs o fechas largas)
-    columnas_utiles = [c for c in df.columns if not c.startswith('_')]
+    st.divider()
+
+    # 3. ANÁLISIS DINÁMICO
+    c1, c2 = st.columns([1, 2])
     
-    seleccion = st.selectbox("Elegí una categoría para visualizar el gráfico:", columnas_utiles)
+    with c1:
+        st.subheader("Configuración")
+        opcion = st.selectbox("¿Qué pregunta querés analizar?", columnas_analisis)
+        
+        # Resumen rápido en texto
+        top_val = df[opcion].value_counts().idxmax()
+        st.write(f"**Valor más frecuente:** \n\n {top_val}")
+        
+    with c2:
+        # Gráfico interactivo con Plotly (se ve mucho mejor que el básico)
+        fig_df = df[opcion].value_counts().reset_index()
+        fig_df.columns = [opcion, 'Cantidad']
+        
+        fig = px.bar(fig_df.head(10), x=opcion, y='Cantidad', 
+                     color='Cantidad', color_continuous_scale='Viridis',
+                     title=f"Distribución de: {opcion}")
+        st.plotly_chart(fig, use_container_width=True)
 
-    if seleccion:
-        datos_grafico = df[seleccion].value_counts().head(15)
-        st.bar_chart(datos_grafico)
-
-    # 6. Tabla de datos para el portfolio
-    st.markdown("---")
-    st.subheader("🔍 Explorador de Datos")
-    with st.expander("Hacé clic para ver la tabla completa"):
-        st.write("Podés ordenar las columnas haciendo clic en los encabezados.")
-        st.dataframe(df, use_container_width=True)
+    # 4. TABLA DE EXPLORACIÓN
+    st.divider()
+    st.subheader("🔍 Explorador de Datos Completo")
+    st.dataframe(df, use_container_width=True)
 
 except Exception as e:
-    st.error("⚠️ Hubo un problema al cargar el archivo.")
-    st.info("Asegurate de que el archivo 'datos_kobo_reducido_70.csv' esté en la carpeta raíz de GitHub.")
-    st.write(f"Detalle del error: {e}")
-
-# 7. Créditos (opcional para tu portfolio)
-st.sidebar.markdown("### Desarrollado por:")
-st.sidebar.write("Iván Scaglia")
-st.sidebar.write("Data Analyst")
+    st.error(f"Error al procesar: {e}")
