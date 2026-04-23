@@ -1,76 +1,69 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 
-# Configuración de nivel profesional
-st.set_page_config(page_title="Gestión de Relevamiento | GCBA", layout="wide")
+st.set_page_config(page_title="Dashboard Profesional KoBo | Gestión Pública", layout="wide")
+
+# Estilo para tarjetas de métricas
+st.markdown("""
+    <style>
+    [data-testid="stMetricValue"] { font-size: 28px; color: #007bff; }
+    .main { background-color: #f8f9fa; }
+    </style>
+    """, unsafe_allow_html=True)
 
 @st.cache_data
 def load_data():
     df = pd.read_csv("datos_kobo_reducido_70.csv", sep=None, engine='python', on_bad_lines='skip')
-    # Limpieza de nombres de columnas (sacamos los '/' que a veces trae KoBo)
+    # Limpiamos nombres de columnas complejos de KoBo
     df.columns = [c.split('/')[-1] for c in df.columns]
     return df
 
 try:
     df = load_data()
 
-    # --- SIDEBAR: FILTROS QUE MANDAN ---
-    st.sidebar.header("filtros de Control")
-    # Asumo que tenés una columna de 'comuna' o 'barrio', si no, usá una relevante
-    comuna_col = 'comuna' if 'comuna' in df.columns else df.columns[5] 
-    lista_comunas = ['Todas'] + sorted(df[comuna_col].unique().tolist())
-    filtro_comuna = st.sidebar.selectbox("Seleccioná Jurisdicción:", lista_comunas)
+    # --- TÍTULO Y CONTEXTO ---
+    st.title("🏛️ Sistema de Monitoreo: Relevamiento Territorial")
+    st.caption("Análisis avanzado de datos observacionales - Gobierno de la Ciudad")
 
-    if filtro_comuna != 'Todas':
-        df = df[df[comuna_col] == filtro_comuna]
-
-    # --- HEADER ---
-    st.title("🚀 Tablero de Control: Relevamiento Sistémico")
-    st.markdown(f"**Análisis actual:** {filtro_comuna} | **Registros procesados:** {len(df)}")
+    # --- KPIs DE IMPACTO ---
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Total Observaciones", len(df))
     
-    # --- KPIs SUPERIORES ---
-    kpi1, kpi2, kpi3 = st.columns(3)
-    with kpi1:
-        st.metric("Total Observado", len(df))
-    with kpi2:
-        # Ejemplo: Variedad de tipos de observación
-        tipo_col = 'tipo' if 'tipo' in df.columns else df.columns[6]
-        st.metric("Diversidad de Tipos", df[tipo_col].nunique())
-    with kpi3:
-        st.metric("Cumplimiento", "100%", "+2.5% vs mes anterior")
+    # Buscamos columnas clave dinámicamente
+    cat_cols = [c for c in df.columns if df[c].nunique() < 15 and df[c].nunique() > 1]
+    
+    m2.metric("Categorías Críticas", len(cat_cols))
+    m3.metric("Comunas Activas", df['comuna'].nunique() if 'comuna' in df.columns else "N/A")
+    m4.metric("Estado", "Activo", delta="Actualizado")
 
     st.divider()
 
-    # --- FILA DE ANÁLISIS VISUAL ---
-    col_a, col_b = st.columns(2)
+    # --- ANÁLISIS CRUZADO (Lo que te hace Pro) ---
+    st.subheader("📊 Análisis de Situación por Jurisdicción")
+    
+    col_a, col_b = st.columns([1, 1])
 
     with col_a:
-        st.subheader("📍 Distribución Geográfica / Sectorial")
-        fig_pie = px.pie(df, names=comuna_col, hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
-        fig_pie.update_layout(showlegend=False)
-        st.plotly_chart(fig_pie, use_container_width=True)
+        # Gráfico de Barras Agrupado: Cruce de dos variables
+        eje_x = st.selectbox("Elegí dimensión principal (Comuna/Zona):", cat_cols, index=0)
+        eje_color = st.selectbox("Cruzar por (Estado/Tipo):", cat_cols, index=1 if len(cat_cols)>1 else 0)
+        
+        fig = px.histogram(df, x=eje_x, color=eje_color, barmode="group",
+                           title=f"Cruce: {eje_x} vs {eje_color}",
+                           color_discrete_sequence=px.colors.qualitative.Bold)
+        st.plotly_chart(fig, use_container_width=True)
 
     with col_b:
-        st.subheader("📊 Top Categorías Detectadas")
-        # Gráfico de barras horizontales prolijo
-        top_cats = df[tipo_col].value_counts().head(10).reset_index()
-        fig_bar = px.bar(top_cats, x='count', y=tipo_col, orientation='h',
-                         color='count', color_continuous_scale='Blues')
-        st.plotly_chart(fig_bar, use_container_width=True)
+        # Treemap: Para ver dónde está el peso del relevamiento
+        st.write("") # Espaciador
+        fig_tree = px.treemap(df, path=[eje_x, eje_color], 
+                              title="Jerarquía de Datos (Tamaño por volumen)")
+        st.plotly_chart(fig_tree, use_container_width=True)
 
-    # --- FILA DE EXPLORACIÓN PROFUNDA ---
-    st.divider()
-    st.subheader("🔍 Matriz de Datos Críticos")
-    
-    # Seleccionamos solo columnas importantes para no abrumar
-    cols_interes = [c for c in df.columns if not any(x in c.lower() for x in ['id', 'uuid', 'index', 'version'])]
-    st.dataframe(df[cols_interes], use_container_width=True)
-
-    # Botón de descarga profesional
-    csv = df.to_csv(index=False).encode('utf-8')
-    st.download_button("📥 Exportar reporte filtrado", data=csv, file_name="reporte_filtrado.csv", mime="text/csv")
+    # --- EXPLORACIÓN DE DATOS ---
+    with st.expander("🔍 Auditoría de Base de Datos (Dataset Completo)"):
+        st.dataframe(df, use_container_width=True)
 
 except Exception as e:
-    st.error(f"Error en la carga: {e}")
+    st.error(f"Fallo en la matriz de datos: {e}")
